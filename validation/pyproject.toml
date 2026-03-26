@@ -1,0 +1,11 @@
+[project]
+name = "validation"
+version = "0.1.0"
+description = "Physics validation for MC-GPU CUDA 13 migration"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.3",
+]

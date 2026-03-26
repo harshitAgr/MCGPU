@@ -21,9 +21,44 @@ The MC-GPU code has been described in different scientific publications [1-4]. T
 
 The main developer of MC-GPU is Andreu Badal, working at the U.S. Food and Drug Administration (Center for Devices and Radiological Health, Office of Science and Engineering Laboratories, Division of Imaging, Diagnostics and Software Reliability). The source code of MC-GPU is free and open software in the public domain, as explained in the Disclaimer section below.
 
-## Known issues
+## CUDA 13 Compatibility (2026)
 
-We are aware of some issues with the compilation of the original code with current versions of the CUDA libraries, after the name of some functions was changed by NVIDIA. If you have problems compiling the code, you can check how the code was upgraded in newer versions of [MCGPU](https://github.com/DIDSR/VICTRE_MCGPU). We plan to release an updated version of the code in the future.
+The code has been updated to compile with CUDA 13+. The following changes were made:
+- Replaced deprecated CUDA APIs removed in CUDA 12+ (`cudaThreadSynchronize`, `cudaThreadExit`, `deviceProp.clockRate`, `deviceProp.kernelExecTimeoutEnabled`)
+- Removed dependency on CUDA SDK samples headers (`helper_cuda.h`, `helper_functions.h`) — all helper functions are now inlined in `MC-GPU_v1.3.h`
+- Updated build targets to `sm_75`/`sm_80`/`sm_90` (Turing, Ampere, Hopper). Adjust the `-gencode` flags in the Makefile for your GPU architecture.
+
+No changes were made to the Monte Carlo transport physics. See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+### Quick build with CUDA 13
+
+```bash
+# Single GPU (adjust -gencode for your GPU):
+nvcc -O3 -use_fast_math -m64 -DUSING_CUDA -I./ \
+  -lcudart -lm -lz --ptxas-options=-v \
+  -gencode=arch=compute_80,code=sm_80 \
+  MC-GPU_v1.3.cu -o MC-GPU_v1.3.x
+
+# With MPI:
+nvcc -O3 -use_fast_math -m64 -DUSING_CUDA -DUSING_MPI -I./ \
+  -I/usr/include/openmpi -lmpi -lcudart -lm -lz --ptxas-options=-v \
+  -gencode=arch=compute_80,code=sm_80 \
+  MC-GPU_v1.3.cu -o MC-GPU_v1.3.x
+```
+
+### Validation
+
+A Jupyter notebook is provided in `validation/validation.ipynb` to verify physics correctness. It runs a simple test case (monoenergetic beam through an aluminum slab) and validates:
+- Primary attenuation against Beer-Lambert law
+- Cross-sections against NIST XCOM database
+- Energy conservation
+- Scatter decomposition (Rayleigh, Compton, photoelectric)
+
+To run the validation:
+```bash
+cd validation
+uv run jupyter lab validation.ipynb
+```
 
 ## Disclaimer
 
@@ -67,10 +102,10 @@ MC-GPU uses CUDA to access NVIDIA GPUs but all the actual computations are coded
 The code can be easily compiled executing the command "make" or running the provided "./make.sh" script. Optionally, the code can be executed from the command line with a command like this (example using CUDA and MPI, openMPI library in this case):
 
  `nvcc -DUSING_CUDA -DUSING_MPI MC-GPU_v1.3.cu -o MC-GPU_v1.3.x -O3
-  -use_fast_math -L/usr/lib/ -I. -I/usr/local/cuda/include 
-  -I/usr/local/cuda/samples/common/inc -I/usr/local/cuda/samples/shared/inc/ 
-  -I/usr/include/openmpi  -lmpi -lz --ptxas-options=-v 
-  -gencode=arch=compute_20,code=sm_20 -gencode=arch=compute_30,code=sm_30`
+  -use_fast_math -L/usr/lib/ -I. -I/usr/local/cuda/include
+  -I/usr/include/openmpi -lmpi -lz --ptxas-options=-v
+  -gencode=arch=compute_75,code=sm_75 -gencode=arch=compute_80,code=sm_80
+  -gencode=arch=compute_90,code=sm_90`
 
 The same source code can also be compiled for a regular CPU using:
 
