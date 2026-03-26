@@ -111,19 +111,57 @@
 
 #ifdef USING_CUDA
 // Include CUDA functions:
-
-  // CUDA runtime
   #include <cuda_runtime.h>
-  // Helper functions and utilities to work with CUDA
-  #include <helper_functions.h>
-
-   // !!DEBUG!! CUDA 5.0: USING ONLY CPU TIMERS. Remove:  #include <cutil_inline.h>
-  #include <helper_cuda.h>
-
-
-//   #include <timer.h>  // !!DEBUG!!   Not necessary??
-
   #include <vector_types.h>
+
+  // Inline CUDA error checking (replaces helper_cuda.h from CUDA SDK samples)
+  #define checkCudaErrors(call) do { \
+      cudaError_t err = (call); \
+      if (err != cudaSuccess) { \
+          fprintf(stderr, "CUDA error at %s:%d - %s\n", \
+                  __FILE__, __LINE__, cudaGetErrorString(err)); \
+          exit(EXIT_FAILURE); \
+      } \
+  } while(0)
+
+  #define getLastCudaError(msg) do { \
+      cudaError_t err = cudaGetLastError(); \
+      if (err != cudaSuccess) { \
+          fprintf(stderr, "CUDA error at %s:%d - %s: %s\n", \
+                  __FILE__, __LINE__, (msg), cudaGetErrorString(err)); \
+          exit(EXIT_FAILURE); \
+      } \
+  } while(0)
+
+  // Map GPU SM version to CUDA core count (replaces _ConvertSMVer2Cores from helper_cuda.h)
+  inline int convertSMVer2Cores(int major, int minor) {
+      switch ((major << 4) + minor) {
+          case 0x70: case 0x72: return 64;  // Volta
+          case 0x75: return 64;              // Turing
+          case 0x80: return 128;             // Ampere GA100
+          case 0x86: return 128;             // Ampere GA10x
+          case 0x89: return 128;             // Ada Lovelace
+          case 0x90: return 128;             // Hopper
+          default:   return 128;             // Future architectures
+      }
+  }
+
+  // Select GPU with highest estimated GFLOPS (replaces gpuGetMaxGflopsDeviceId from helper_cuda.h)
+  inline int gpuGetMaxGflopsDeviceId(void) {
+      int device_count = 0, best_device = 0;
+      double best_perf = 0.0;
+      cudaGetDeviceCount(&device_count);
+      for (int i = 0; i < device_count; i++) {
+          cudaDeviceProp prop;
+          cudaGetDeviceProperties(&prop, i);
+          int clock_rate = 0;
+          cudaDeviceGetAttribute(&clock_rate, cudaDevAttrClockRate, i);
+          double perf = (double)convertSMVer2Cores(prop.major, prop.minor)
+                        * prop.multiProcessorCount * clock_rate;
+          if (perf > best_perf) { best_perf = perf; best_device = i; }
+      }
+      return best_device;
+  }
 
 #else
   // Include the definition of the vector structures (float3, int2...) that are useful in the GPU (multiple values can be read simultaneously from the slow main memory):
