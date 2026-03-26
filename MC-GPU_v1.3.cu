@@ -10,6 +10,14 @@
 //           CUDA 5.0: Using "checkCudaErrors" instead of "cutilSafeCall" or "cutilCheckError"
 //           CUDA 5.0: Using "gpuGetMaxGflopsDeviceId instead of "cutGetMaxGflopsDeviceId"
 //           CUDA 5.0: Substitute all the CUDA timer functions (cutResetTimer, cutStartTimer, cutStopTimer, cutGetTimerValue) for standard C clock() calls.
+//
+// -- Code upgraded to CUDA 13 (2026):
+//           Replaced cudaThreadSynchronize -> cudaDeviceSynchronize (removed in CUDA 12)
+//           Removed cudaThreadExit (replaced by existing cudaDeviceReset call)
+//           Removed dependency on CUDA SDK samples (helper_cuda.h, helper_functions.h)
+//           Inlined checkCudaErrors, getLastCudaError, convertSMVer2Cores, gpuGetMaxGflopsDeviceId
+//           Replaced deviceProp.clockRate and kernelExecTimeoutEnabled with cudaDeviceGetAttribute
+//           Updated build targets from sm_20/sm_30 to sm_75/sm_80/sm_90 (Turing+)
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
