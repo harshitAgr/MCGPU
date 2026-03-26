@@ -744,7 +744,7 @@ int main(int argc, char **argv)
       
       
       #ifdef USING_MPI    
-        // Find out the total number of histories simulated in the speed test by all the GPUs. Note that this MPI call will be executed in parallel with the GPU kernel because it is located before the cudaThreadSynchronize command!
+        // Find out the total number of histories simulated in the speed test by all the GPUs. Note that this MPI call will be executed in parallel with the GPU kernel because it is located before the cudaDeviceSynchronize command!
       
         return_reduce = MPI_Allreduce(&histories_speed_test, &total_histories_speed_test, 1, MPI_UNSIGNED_LONG, MPI_SUM, MPI_COMM_WORLD);  
         if (MPI_SUCCESS != return_reduce)
@@ -754,7 +754,7 @@ int main(int argc, char **argv)
         total_histories_speed_test = histories_speed_test;
       #endif
             
-      cudaThreadSynchronize();    // Force the runtime to wait until GPU kernel has completed
+      cudaDeviceSynchronize();    // Force the runtime to wait until GPU kernel has completed
       getLastCudaError("\n\n !!Kernel execution failed while simulating particle tracks!! ");   // Check if the CUDA function returned any error
 
       float speed_test_time = float(clock()-clock_kernel)/CLOCKS_PER_SEC;
@@ -891,7 +891,7 @@ int main(int argc, char **argv)
       }
     #endif
     
-    cudaThreadSynchronize();    // Force the runtime to wait until the GPU kernel is completed
+    cudaDeviceSynchronize();    // Force the runtime to wait until the GPU kernel is completed
     getLastCudaError("\n\n !!Kernel execution failed while simulating particle tracks!! ");  // Check if kernel execution generated any error
 
     float real_GPU_speed = total_histories_current_kernel_float/(float(clock()-clock_kernel)/CLOCKS_PER_SEC);  // GPU speed for all the image simulation, not just the speed test.
@@ -1052,7 +1052,7 @@ int main(int argc, char **argv)
       #ifdef USING_CUDA
         MASTER_THREAD printf("       ==> CUDA: Launching kernel to reset the device image to 0: number of blocks = %d, threads per block = 128\n", (int)(ceil(pixels_per_image/128.0f)+0.01f) );
         init_image_array_GPU<<<(int)(ceil(pixels_per_image/128.0f)+0.01f),128>>>(image_device, pixels_per_image);
-        cudaThreadSynchronize();
+        cudaDeviceSynchronize();
         getLastCudaError("\n\n !!Kernel execution failed initializing the image array!! ");  // Check if kernel execution generated any error:
       #else        
         memset(image, 0, image_bytes);     //   Init memory space to 0.  (see http://www.lainoox.com/c-memset-examples/)
@@ -1089,7 +1089,6 @@ int main(int argc, char **argv)
   cudaFree(mfp_table_a_device);
   cudaFree(mfp_table_b_device);
   cudaFree(voxels_Edep_device);
-  checkCudaErrors( cudaThreadExit() );
 
   MASTER_THREAD printf("       ==> CUDA: Time freeing the device memory and ending the GPU threads: %.6f s\n", float(clock()-clock_kernel)/CLOCKS_PER_SEC);
 
@@ -2458,7 +2457,9 @@ void init_CUDA_device( int* gpu_id, int myID, int numprocs,
   
     //!!DeBuG!! MC-GPU_v1.4!! Skip GPUs connected to a monitor, if more GPUs available:
     checkCudaErrors(cudaGetDeviceProperties(&deviceProp, *gpu_id));    
-    if (0!=deviceProp.kernelExecTimeoutEnabled)                                 //!!DeBuG!! 
+    int kernelExecTimeoutMPI = 0;
+    cudaDeviceGetAttribute(&kernelExecTimeoutMPI, cudaDevAttrKernelExecTimeout, *gpu_id);
+    if (0!=kernelExecTimeoutMPI)                                               //!!DeBuG!!
     {
       if((*gpu_id)<(deviceCount-1))                                             //!!DeBuG!! 
       {      
@@ -2525,7 +2526,7 @@ void init_CUDA_device( int* gpu_id, int myID, int numprocs,
 
   }
 
-  register int GPU_cores = _ConvertSMVer2Cores(deviceProp.major, deviceProp.minor) * deviceProp.multiProcessorCount;    // CUDA SDK function to get the number of GPU cores
+  register int GPU_cores = convertSMVer2Cores(deviceProp.major, deviceProp.minor) * deviceProp.multiProcessorCount;    // CUDA SDK function to get the number of GPU cores
 
   // -- Reading the device properties:
   
@@ -2535,19 +2536,23 @@ void init_CUDA_device( int* gpu_id, int myID, int numprocs,
   printf("\n       ==> CUDA: %d CUDA enabled GPU detected! Using device #%d: \"%s\"\n", deviceCount, (*gpu_id), deviceProp.name);    
 #endif
   printf("                 Compute capability: %d.%d, Number multiprocessors: %d, Number cores: %d\n", deviceProp.major, deviceProp.minor, deviceProp.multiProcessorCount, GPU_cores);
-  printf("                 Clock rate: %.2f GHz, Global memory: %.3f Mbyte, Constant memory: %.2f kbyte\n", deviceProp.clockRate*1.0e-6f, deviceProp.totalGlobalMem/(1024.f*1024.f), deviceProp.totalConstMem/1024.f);
+  int clockRate_kHz = 0;
+  cudaDeviceGetAttribute(&clockRate_kHz, cudaDevAttrClockRate, *gpu_id);
+  printf("                 Clock rate: %.2f GHz, Global memory: %.3f Mbyte, Constant memory: %.2f kbyte\n", clockRate_kHz*1.0e-6f, deviceProp.totalGlobalMem/(1024.f*1024.f), deviceProp.totalConstMem/1024.f);
   printf("                 Shared memory per block: %.2f kbyte, Registers per block: %.2f kbyte\n", deviceProp.sharedMemPerBlock/1024.f, deviceProp.regsPerBlock/1024.f);
   int driverVersion = 0, runtimeVersion = 0;  
   cudaDriverGetVersion(&driverVersion);
   cudaRuntimeGetVersion(&runtimeVersion);
   printf("                 CUDA Driver Version: %d.%d, Runtime Version: %d.%d\n\n", driverVersion/1000, driverVersion%100, runtimeVersion/1000, runtimeVersion%100);
 
-  if (0!=deviceProp.kernelExecTimeoutEnabled)
+  int kernelExecTimeout = 0;
+  cudaDeviceGetAttribute(&kernelExecTimeout, cudaDevAttrKernelExecTimeout, *gpu_id);
+  if (0!=kernelExecTimeout)
   {
     printf("\n\n\n   !!WARNING!! The selected GPU is connected to a display and therefore CUDA driver will limit the kernel run time to 5 seconds and the simulation will likely fail!!\n");
     printf( "              You can fix this by executing the simulation in a different GPU (select number in the input file) or by turning off the window manager and using the text-only Linux shell.\n\n\n");
     // exit(-1);
-  }    
+  }
 
   fflush(stdout);
   
@@ -2629,7 +2634,7 @@ void init_CUDA_device( int* gpu_id, int myID, int numprocs,
   MASTER_THREAD printf("       ==> CUDA: Launching kernel to initialize the device image to 0: number of blocks = %d, threads per block = 128\n", (int)(ceil(pixels_per_image/128.0f)+0.01f) );
 
   init_image_array_GPU<<<(int)(ceil(pixels_per_image/128.0f)+0.01f),128>>>(*image_device, pixels_per_image);
-    cudaThreadSynchronize();      // Force the runtime to wait until all device tasks have completed
+    cudaDeviceSynchronize();      // Force the runtime to wait until all device tasks have completed
     getLastCudaError("\n\n !!Kernel execution failed initializing the image array!! ");  // Check if kernel execution generated any error:
 
 
@@ -2651,8 +2656,8 @@ void init_CUDA_device( int* gpu_id, int myID, int numprocs,
     }
     while (num_blocks > 65500);    
     MASTER_THREAD printf("       ==> CUDA: Launching kernel to initialize the device dose deposition to 0: number of blocks = %d, threads per block = %d\n", num_blocks, num_threads_block);  
-    init_dose_array_GPU<<<num_blocks,num_threads_block>>>(*voxels_Edep_device, num_voxels_dose);    
-      cudaThreadSynchronize();
+    init_dose_array_GPU<<<num_blocks,num_threads_block>>>(*voxels_Edep_device, num_voxels_dose);
+      cudaDeviceSynchronize();
       getLastCudaError("\n\n !!Kernel execution failed initializing the dose array!! ");  // Check if kernel execution generated any error:
 */
 
@@ -2698,9 +2703,11 @@ int guestimate_GPU_performance(int gpu_id)
 {          
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, gpu_id);
-  float num_cores       = (float) _ConvertSMVer2Cores(deviceProp.major, deviceProp.minor) * deviceProp.multiProcessorCount;
+  float num_cores       = (float) convertSMVer2Cores(deviceProp.major, deviceProp.minor) * deviceProp.multiProcessorCount;
   float comp_capability = (float) deviceProp.major;
-  float frequency       = deviceProp.clockRate*1.0e-6f;
+  int clockRate_kHz = 0;
+  cudaDeviceGetAttribute(&clockRate_kHz, cudaDevAttrClockRate, gpu_id);
+  float frequency       = clockRate_kHz*1.0e-6f;
   
   return (int)(2.0f*num_cores*frequency*comp_capability + 100.0f + 0.50f);
 }
