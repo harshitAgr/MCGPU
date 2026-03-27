@@ -54,10 +54,14 @@ A Jupyter notebook is provided in `validation/validation.ipynb` to verify physic
 - Energy conservation
 - Scatter decomposition (Rayleigh, Compton, photoelectric)
 
-To run the validation:
+To run the validation (requires [uv](https://docs.astral.sh/uv/) and a CUDA-capable GPU):
 ```bash
 cd validation
-uv run jupyter lab validation.ipynb
+uv sync                                # install dependencies
+uv run jupyter lab validation.ipynb    # interactive (opens browser)
+
+# Or run non-interactively and check results:
+uv run jupyter nbconvert --to notebook --execute validation.ipynb --output validation_results.ipynb
 ```
 
 ## Disclaimer
